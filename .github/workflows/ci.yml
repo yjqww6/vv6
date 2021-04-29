@@ -1,0 +1,40 @@
+name: CI Test 
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        build-type: [Release, Debug]
+
+    runs-on: ${{ matrix.os }}
+    
+    env:
+      INSTALL_DIR: ${{ github.workspace }}/install/
+      
+    steps:
+      - name: Perform checkout
+        uses: actions/checkout@v2
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libboost-dev
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install boost
+                    
+      - name: Build
+        run: |
+            mkdir -p build && cd build
+            cmake .. -DBUILD_TESTING=TRUE -DCMAKE_BUILD_TYPE=${{ matrix.os }} -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR
+            cmake --build . --config ${{ matrix.build-type }} --target install
+
+      - name: Test
+        run: |
+            cd build
+            ctest

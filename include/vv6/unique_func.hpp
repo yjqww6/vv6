@@ -1,9 +1,7 @@
 #pragma once
 
-#include <type_traits>
-#include <utility>
-#include <cstdlib>
 #include <cstring>
+#include <cstddef>
 #include "func_view.hpp"
 
 namespace vv6

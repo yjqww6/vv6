@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdlib>
+#include <utility>
 #include <type_traits>
 
 namespace vv6
@@ -152,7 +153,7 @@ public:
 
     explicit constexpr operator bool() const noexcept
     {
-        return m_invoker != details::void_invoker<Ret(Args...)>::s_invoke;
+        return m_invoker != &details::void_invoker<Ret(Args...)>::s_invoke;
     }
 };
 
