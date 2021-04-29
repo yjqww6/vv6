@@ -2,8 +2,6 @@
 #include <vv6/shared_func.hpp>
 #include <vv6/unique_func.hpp>
 
-#include <boost/predef.h>
-
 #define BOOST_TEST_MODULE vv6 Test
 #include <boost/test/included/unit_test.hpp>
 
@@ -76,18 +74,14 @@ BOOST_AUTO_TEST_CASE(constexpr_test)
     static_assert(!const_f3);
 
     constexpr vv6::func_view<int(int)> const_f4(a);
-#if not(BOOST_COMP_GNUC)
     static_assert(bool(const_f4));
-#endif
 }
 
 BOOST_AUTO_TEST_CASE(test1)
 {
     constexpr vv6::func_view<int(int)> f(a);
 
-#if not(BOOST_COMP_GNUC)
     static_assert(bool(f));
-#endif
 
     BOOST_TEST(f(0) == 42);
 

@@ -67,19 +67,6 @@ struct internal_manager
     }
 };
 
-template <typename Sig>
-struct void_invoker;
-
-
-template <typename Ret, typename ...Args>
-struct void_invoker<Ret(Args...)>
-{
-    static Ret s_invoke(const storage_type&, Args&&...)
-    {
-        std::abort();
-    }
-};
-
 template <typename T, bool Const>
 auto& internal_cast(const storage_type& obj)
 {
@@ -190,7 +177,7 @@ class unique_func<Ret(Args...)>
     }
 public:
     constexpr unique_func() noexcept:
-        m_invoker(uf_details::void_invoker<Ret(Args...)>::s_invoke),
+        m_invoker(nullptr),
         m_manager(nullptr),
         m_storage()
     {
@@ -210,7 +197,7 @@ public:
             //redundant in empty case
             std::memcpy(&m_storage, &other.m_storage, sizeof(m_storage));
         }
-        other.m_invoker = uf_details::void_invoker<Ret(Args...)>::s_invoke;
+        other.m_invoker = nullptr;
         other.m_manager = nullptr;
     }
 
@@ -226,7 +213,7 @@ public:
         {
             std::memcpy(&m_storage, &other.m_storage, sizeof(m_storage));
         }
-        other.m_invoker = uf_details::void_invoker<Ret(Args...)>::s_invoke;
+        other.m_invoker = nullptr;
         other.m_manager = nullptr;
         return *this;
     }
@@ -248,7 +235,7 @@ public:
 
     explicit operator bool() const noexcept
     {
-        return m_invoker != uf_details::void_invoker<Ret(Args...)>::s_invoke;
+        return m_invoker != nullptr;
     }
 
     template <typename T, std::enable_if_t<proper_type<std::decay_t<T>>, int> = 0>

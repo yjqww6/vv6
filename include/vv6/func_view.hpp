@@ -18,19 +18,6 @@ union functor
     void (*fun)();
 };
 
-template <typename Sig>
-struct void_invoker;
-
-
-template <typename Ret, typename ...Args>
-struct void_invoker<Ret(Args...)>
-{
-    static Ret s_invoke(functor, Args&&...)
-    {
-        std::abort();
-    }
-};
-
 template <typename Sig, typename T>
 struct class_invoker;
 
@@ -116,7 +103,7 @@ class func_view<Ret(Args...)>
 
 public:
     constexpr func_view() noexcept :
-        m_functor(), m_invoker(details::void_invoker<Ret(Args...)>::s_invoke)
+        m_functor(), m_invoker()
     {
 
     }
@@ -153,7 +140,7 @@ public:
 
     explicit constexpr operator bool() const noexcept
     {
-        return m_invoker != &details::void_invoker<Ret(Args...)>::s_invoke;
+        return m_invoker != nullptr;
     }
 };
 
