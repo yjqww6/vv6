@@ -54,4 +54,4 @@ jobs:
       - name: Test
         run: |
             cd build
-            ctest -C Release
+            ctest -C ${{ matrix.build-type }}
