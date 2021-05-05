@@ -26,16 +26,14 @@ struct class_invoker<Ret(Args...), Klass>
 {
     static Ret s_invoke(functor fun, Args&&... args)
     {
-        return (*static_cast<const Klass*>(fun.obj))(std::forward<Args>(args)...);
-    }
-};
-
-template <typename... Args, typename Klass>
-struct class_invoker<void(Args...), Klass>
-{
-    static void s_invoke(functor fun, Args&&... args)
-    {
-        (*static_cast<const Klass*>(fun.obj))(std::forward<Args>(args)...);
+        if constexpr(std::is_same_v<void, Ret>)
+        {
+            (*static_cast<const Klass*>(fun.obj))(std::forward<Args>(args)...);
+        }
+        else
+        {
+            return (*static_cast<const Klass*>(fun.obj))(std::forward<Args>(args)...);
+        }
     }
 };
 
@@ -47,16 +45,14 @@ struct non_const_class_invoker<Ret(Args...), Klass>
 {
     static Ret s_invoke(functor fun, Args&&... args)
     {
-        return (*const_cast<Klass*>(static_cast<const Klass*>(fun.obj)))(std::forward<Args>(args)...);
-    }
-};
-
-template <typename... Args, typename Klass>
-struct non_const_class_invoker<void(Args...), Klass>
-{
-    static void s_invoke(functor fun, Args&&... args)
-    {
-        (*const_cast<Klass*>(static_cast<const Klass*>(fun.obj)))(std::forward<Args>(args)...);
+        if constexpr(std::is_same_v<void, Ret>)
+        {
+            (*const_cast<Klass*>(static_cast<const Klass*>(fun.obj)))(std::forward<Args>(args)...);
+        }
+        else
+        {
+            return (*const_cast<Klass*>(static_cast<const Klass*>(fun.obj)))(std::forward<Args>(args)...);
+        }
     }
 };
 
@@ -68,19 +64,16 @@ struct func_invoker<Ret(Args...), F*>
 {
     static Ret s_invoke(functor fun, Args&&... args)
     {
-        return reinterpret_cast<F*>(fun.fun)(std::forward<Args>(args)...);
+        if constexpr(std::is_same_v<void, Ret>)
+        {
+            reinterpret_cast<F*>(fun.fun)(std::forward<Args>(args)...);
+        }
+        else
+        {
+            return reinterpret_cast<F*>(fun.fun)(std::forward<Args>(args)...);
+        }
     }
 };
-
-template <typename... Args, typename F>
-struct func_invoker<void(Args...), F*>
-{
-    static void s_invoke(functor fun, Args&&... args)
-    {
-        reinterpret_cast<F*>(fun.fun)(std::forward<Args>(args)...);
-    }
-};
-
 }
 
 struct use_non_const_type {};

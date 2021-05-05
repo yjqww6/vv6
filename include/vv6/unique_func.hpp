@@ -101,16 +101,14 @@ struct internal_invoker<Ret(Args...), Const, T>
 {
     static Ret s_invoke(const storage_type& obj, Args&&... args)
     {
-        return internal_cast<T, Const>(obj)(std::forward<Args>(args)...);
-    }
-};
-
-template <typename... Args, typename T, bool Const>
-struct internal_invoker<void(Args...), Const, T>
-{
-    static void s_invoke(const storage_type& obj, Args&&... args)
-    {
-        internal_cast<T, Const>(obj)(std::forward<Args>(args)...);
+        if constexpr(std::is_same_v<void, Ret>)
+        {
+            internal_cast<T, Const>(obj)(std::forward<Args>(args)...);
+        }
+        else
+        {
+            return internal_cast<T, Const>(obj)(std::forward<Args>(args)...);
+        }
     }
 };
 
@@ -122,16 +120,14 @@ struct external_invoker<Ret(Args...), Const, T>
 {
     static Ret s_invoke(const storage_type& obj, Args&&... args)
     {
-        return external_cast<T, Const>(obj)(std::forward<Args>(args)...);
-    }
-};
-
-template <typename... Args, typename T, bool Const>
-struct external_invoker<void(Args...), Const, T>
-{
-    static void s_invoke(const storage_type& obj, Args&&... args)
-    {
-        external_cast<T, Const>(obj)(std::forward<Args>(args)...);
+        if constexpr(std::is_same_v<void, Ret>)
+        {
+            external_cast<T, Const>(obj)(std::forward<Args>(args)...);
+        }
+        else
+        {
+            return external_cast<T, Const>(obj)(std::forward<Args>(args)...);
+        }
     }
 };
 

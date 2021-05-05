@@ -98,6 +98,12 @@ BOOST_AUTO_TEST_CASE(test2)
     BOOST_TEST(g(1) == 43);
 }
 
+BOOST_AUTO_TEST_CASE(test_void)
+{
+    constexpr vv6::func_view<void(int)> f(a);
+    static_assert (bool(f));
+}
+
 BOOST_AUTO_TEST_CASE(use_non_const)
 {
     struct C
@@ -299,6 +305,12 @@ BOOST_AUTO_TEST_CASE(test4)
 
     vv6::unique_func<int(int)> f2(std::in_place_type<F>, vv6::use_non_const, 20);
     BOOST_TEST(f2(10) == 10);
+}
+
+BOOST_AUTO_TEST_CASE(test_void)
+{
+    vv6::unique_func<void(int)> f(a);
+    BOOST_TEST(bool(f));
 }
 
 BOOST_AUTO_TEST_CASE(variance)
