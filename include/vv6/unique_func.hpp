@@ -68,7 +68,7 @@ struct internal_manager
 };
 
 template <typename T, bool Const>
-auto& internal_cast(const storage_type& obj)
+decltype(auto) internal_cast(const storage_type& obj)
 {
     if constexpr(Const)
     {
@@ -81,7 +81,7 @@ auto& internal_cast(const storage_type& obj)
 }
 
 template <typename T, bool Const>
-auto& external_cast(const storage_type& obj)
+decltype(auto) external_cast(const storage_type& obj)
 {
     if constexpr(Const)
     {
@@ -99,7 +99,7 @@ struct internal_invoker;
 template <typename Ret, typename... Args, typename T, bool Const>
 struct internal_invoker<Ret(Args...), Const, T>
 {
-    static Ret s_invoke(const storage_type& obj, Args&&... args)
+    static Ret s_invoke(const storage_type& obj, details::argument_t<Args>... args)
     {
         if constexpr(std::is_same_v<void, Ret>)
         {
@@ -118,7 +118,7 @@ struct external_invoker;
 template <typename Ret, typename... Args, typename T, bool Const>
 struct external_invoker<Ret(Args...), Const, T>
 {
-    static Ret s_invoke(const storage_type& obj, Args&&... args)
+    static Ret s_invoke(const storage_type& obj, details::argument_t<Args>... args)
     {
         if constexpr(std::is_same_v<void, Ret>)
         {
@@ -139,7 +139,7 @@ class unique_func;
 template <typename Ret, typename... Args>
 class unique_func<Ret(Args...)>
 {
-    Ret (*m_invoker)(const uf_details::storage_type& obj, Args&&... args);
+    Ret (*m_invoker)(const uf_details::storage_type& obj, details::argument_t<Args>... args);
     uf_details::manager_type m_manager;
     uf_details::storage_type m_storage;
 
@@ -224,9 +224,9 @@ public:
         }
     }
 
-    Ret operator()(Args... args) const
+    Ret operator()(Args&&... args) const
     {
-        return m_invoker(m_storage, static_cast<Args&&>(args)...);
+        return m_invoker(m_storage, std::forward<Args>(args)...);
     }
 
     explicit operator bool() const noexcept

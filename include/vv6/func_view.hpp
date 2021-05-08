@@ -18,59 +18,51 @@ union functor
     void (*fun)();
 };
 
-template <typename Sig, typename T>
-struct class_invoker;
-
-template <typename Ret, typename... Args, typename Klass>
-struct class_invoker<Ret(Args...), Klass>
+template <typename T, bool Const>
+decltype(auto) functor_cast(functor fun)
 {
-    static Ret s_invoke(functor fun, Args&&... args)
+    if constexpr(std::is_function_v<T>)
     {
-        if constexpr(std::is_same_v<void, Ret>)
-        {
-            (*static_cast<const Klass*>(fun.obj))(std::forward<Args>(args)...);
-        }
-        else
-        {
-            return (*static_cast<const Klass*>(fun.obj))(std::forward<Args>(args)...);
-        }
+        return reinterpret_cast<T*>(fun.fun);
     }
+    else if constexpr(Const)
+    {
+        return *static_cast<const T*>(fun.obj);
+    }
+    else
+    {
+        return *const_cast<T*>(static_cast<const T*>(fun.obj));
+    }
+}
+
+template <typename T>
+struct pass_by_value
+{
+    static constexpr bool value = std::is_object_v<T> &&
+            std::is_trivially_copy_constructible_v<T> &&
+            std::is_trivially_move_constructible_v<T> &&
+            std::is_trivially_destructible_v<T> &&
+            (sizeof(T) <= sizeof(void*));
 };
 
-template <typename Sig, typename T>
-struct non_const_class_invoker;
+template <typename T>
+using argument_t = std::conditional_t<pass_by_value<T>::value, T, T&&>;
 
-template <typename Ret, typename... Args, typename Klass>
-struct non_const_class_invoker<Ret(Args...), Klass>
+template <typename Sig, typename T, bool Const>
+struct invoker;
+
+template <typename Ret, typename... Args, typename T, bool Const>
+struct invoker<Ret(Args...), T, Const>
 {
-    static Ret s_invoke(functor fun, Args&&... args)
+    static Ret s_invoke(functor fun, argument_t<Args>... args)
     {
         if constexpr(std::is_same_v<void, Ret>)
         {
-            (*const_cast<Klass*>(static_cast<const Klass*>(fun.obj)))(std::forward<Args>(args)...);
+            functor_cast<T, Const>(fun)(std::forward<Args>(args)...);
         }
         else
         {
-            return (*const_cast<Klass*>(static_cast<const Klass*>(fun.obj)))(std::forward<Args>(args)...);
-        }
-    }
-};
-
-template <typename Sig, typename T>
-struct func_invoker;
-
-template <typename Ret, typename... Args, typename F>
-struct func_invoker<Ret(Args...), F*>
-{
-    static Ret s_invoke(functor fun, Args&&... args)
-    {
-        if constexpr(std::is_same_v<void, Ret>)
-        {
-            reinterpret_cast<F*>(fun.fun)(std::forward<Args>(args)...);
-        }
-        else
-        {
-            return reinterpret_cast<F*>(fun.fun)(std::forward<Args>(args)...);
+            return functor_cast<T, Const>(fun)(std::forward<Args>(args)...);
         }
     }
 };
@@ -83,7 +75,7 @@ template <typename Ret, typename ...Args>
 class func_view<Ret(Args...)>
 {
     details::functor m_functor;
-    Ret (*m_invoker)(details::functor, Args&& ...);
+    Ret( *m_invoker)(details::functor, details::argument_t<Args>...);
 
     template <typename T>
     static constexpr bool proper_class = std::is_class_v<T> &&
@@ -102,7 +94,7 @@ public:
     }
 
     template <typename T, std::enable_if_t<proper_class<std::decay_t<T>>, int> = 0>
-    constexpr func_view(const T& obj) noexcept :m_invoker(details::class_invoker<Ret(Args...), T>::s_invoke)
+    constexpr func_view(const T& obj) noexcept :m_invoker(details::invoker<Ret(Args...), T, true>::s_invoke)
     {
         m_functor.obj = &obj;
     }
@@ -112,7 +104,7 @@ public:
 
     template <typename T, std::enable_if_t<proper_non_const_class<std::decay_t<T>> && !std::is_const_v<T>, int> = 0>
     constexpr func_view(use_non_const_type, T& obj) noexcept :
-        m_invoker(details::non_const_class_invoker<Ret(Args...), T>::s_invoke)
+        m_invoker(details::invoker<Ret(Args...), T, false>::s_invoke)
     {
         m_functor.obj = &obj;
     }
@@ -121,12 +113,12 @@ public:
                   std::enable_if_t<std::is_function_v<std::remove_pointer_t<T>> && std::is_invocable_r_v<Ret, T, Args&&...>,
                                    int> = 0>
     constexpr func_view(T t) noexcept :
-        m_invoker(details::func_invoker<Ret(Args...), T>::s_invoke)
+        m_invoker(details::invoker<Ret(Args...), std::remove_pointer_t<T>, true>::s_invoke)
     {
         m_functor.fun = reinterpret_cast<void(*)()>(t);
     }
 
-    Ret operator()(Args... args) const
+    Ret operator()(Args&&... args) const
     {
         return m_invoker(m_functor, std::forward<Args>(args)...);
     }
