@@ -56,14 +56,7 @@ struct invoker<Ret(Args...), T, Const>
 {
     static Ret s_invoke(functor fun, argument_t<Args>... args)
     {
-        if constexpr(std::is_same_v<void, Ret>)
-        {
-            functor_cast<T, Const>(fun)(std::forward<Args>(args)...);
-        }
-        else
-        {
-            return functor_cast<T, Const>(fun)(std::forward<Args>(args)...);
-        }
+        return static_cast<Ret>(functor_cast<T, Const>(fun)(std::forward<Args>(args)...));
     }
 };
 }

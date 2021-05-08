@@ -341,4 +341,19 @@ BOOST_AUTO_TEST_CASE(variance)
     static_assert (!std::is_constructible_v<vv6::unique_func<B(A)>, F1&>);
 }
 
+BOOST_AUTO_TEST_CASE(non_const_only)
+{
+    struct F
+    {
+        int operator()(int x)
+        {
+            return x;
+        }
+    } a;
+
+    vv6::unique_func<int(int)> f(a);
+    BOOST_TEST(f(100) == 100);
+    BOOST_CHECK_THROW(as_const(f)(100), vv6::uf_details::not_const_invocable);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

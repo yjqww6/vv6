@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <cstddef>
+#include <exception>
 #include "func_view.hpp"
 
 namespace vv6
@@ -94,6 +95,15 @@ decltype(auto) storage_cast(const storage_type& obj)
     }
 }
 
+class not_const_invocable : public std::exception
+{
+public:
+    const char* what() const noexcept override
+    {
+        return "this unique_func is not const invocable";
+    }
+};
+
 template <typename Sig, typename T, bool External>
 struct invoker;
 
@@ -102,27 +112,22 @@ struct invoker<Ret(Args...), T, External>
 {
     static Ret s_invoke(const storage_type& obj, details::argument_t<Args>... args, bool is_const)
     {
-        if constexpr(std::is_same_v<void, Ret>)
+        if(is_const)
         {
-            if(is_const)
+            if constexpr(std::is_invocable_r_v<Ret, const T&, Args&&...>)
             {
-                storage_cast<T, true, External>(obj)(std::forward<Args>(args)...);
+
+                return static_cast<Ret>(storage_cast<T, true, External>(obj)(std::forward<Args>(args)...));
             }
             else
             {
-                storage_cast<T, false, External>(obj)(std::forward<Args>(args)...);
+                throw not_const_invocable();
             }
         }
         else
         {
-            if(is_const)
-            {
-                return storage_cast<T, true, External>(obj)(std::forward<Args>(args)...);
-            }
-            else
-            {
-                return storage_cast<T, false, External>(obj)(std::forward<Args>(args)...);
-            }
+
+            return static_cast<Ret>(storage_cast<T, false, External>(obj)(std::forward<Args>(args)...));
         }
     }
 };
@@ -141,7 +146,7 @@ class unique_func<Ret(Args...)>
 
     template <typename T>
     static constexpr bool proper_type = !std::is_convertible_v<T*, unique_func*> &&
-            std::is_invocable_r_v<Ret, const T&, Args&&...>;
+            std::is_invocable_r_v<Ret, T&, Args&&...>;
 
     template <typename DT, typename... DTArgs>
     unique_func(int, std::in_place_type_t<DT>, DTArgs&& ...args)
