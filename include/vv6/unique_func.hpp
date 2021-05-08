@@ -67,66 +67,62 @@ struct internal_manager
     }
 };
 
-template <typename T, bool Const>
-decltype(auto) internal_cast(const storage_type& obj)
+template <typename T, bool Const, bool External>
+decltype(auto) storage_cast(const storage_type& obj)
 {
-    if constexpr(Const)
+    if constexpr(External)
     {
-        return *reinterpret_cast<const T*>(&obj);
-    }
-    else
-    {
-        return *const_cast<T*>(reinterpret_cast<const T*>(&obj));
-    }
-}
-
-template <typename T, bool Const>
-decltype(auto) external_cast(const storage_type& obj)
-{
-    if constexpr(Const)
-    {
-        return **reinterpret_cast<const T* const *>(&obj);
-    }
-    else
-    {
-        return *const_cast<T*>(*reinterpret_cast<const T* const *>(&obj));
-    }
-}
-
-template <typename Sig, bool Const, typename T>
-struct internal_invoker;
-
-template <typename Ret, typename... Args, typename T, bool Const>
-struct internal_invoker<Ret(Args...), Const, T>
-{
-    static Ret s_invoke(const storage_type& obj, details::argument_t<Args>... args)
-    {
-        if constexpr(std::is_same_v<void, Ret>)
+        if constexpr(Const)
         {
-            internal_cast<T, Const>(obj)(std::forward<Args>(args)...);
+            return **reinterpret_cast<const T* const *>(&obj);
         }
         else
         {
-            return internal_cast<T, Const>(obj)(std::forward<Args>(args)...);
+            return *const_cast<T*>(*reinterpret_cast<const T* const *>(&obj));
         }
     }
-};
-
-template <typename Sig, bool Const, typename T>
-struct external_invoker;
-
-template <typename Ret, typename... Args, typename T, bool Const>
-struct external_invoker<Ret(Args...), Const, T>
-{
-    static Ret s_invoke(const storage_type& obj, details::argument_t<Args>... args)
+    else
     {
-        if constexpr(std::is_same_v<void, Ret>)
+        if constexpr(Const)
         {
-            external_cast<T, Const>(obj)(std::forward<Args>(args)...);
+            return *reinterpret_cast<const T*>(&obj);
         }
         else
         {
-            return external_cast<T, Const>(obj)(std::forward<Args>(args)...);
+            return *const_cast<T*>(reinterpret_cast<const T*>(&obj));
+        }
+    }
+}
+
+template <typename Sig, typename T, bool External>
+struct invoker;
+
+template <typename Ret, typename... Args, typename T, bool External>
+struct invoker<Ret(Args...), T, External>
+{
+    static Ret s_invoke(const storage_type& obj, details::argument_t<Args>... args, bool is_const)
+    {
+        if constexpr(std::is_same_v<void, Ret>)
+        {
+            if(is_const)
+            {
+                storage_cast<T, true, External>(obj)(std::forward<Args>(args)...);
+            }
+            else
+            {
+                storage_cast<T, false, External>(obj)(std::forward<Args>(args)...);
+            }
+        }
+        else
+        {
+            if(is_const)
+            {
+                return storage_cast<T, true, External>(obj)(std::forward<Args>(args)...);
+            }
+            else
+            {
+                return storage_cast<T, false, External>(obj)(std::forward<Args>(args)...);
+            }
         }
     }
 };
@@ -139,7 +135,7 @@ class unique_func;
 template <typename Ret, typename... Args>
 class unique_func<Ret(Args...)>
 {
-    Ret (*m_invoker)(const uf_details::storage_type& obj, details::argument_t<Args>... args);
+    Ret (*m_invoker)(const uf_details::storage_type& obj, details::argument_t<Args>... args, bool);
     uf_details::manager_type m_manager;
     uf_details::storage_type m_storage;
 
@@ -147,26 +143,24 @@ class unique_func<Ret(Args...)>
     static constexpr bool proper_type = !std::is_convertible_v<T*, unique_func*> &&
             std::is_invocable_r_v<Ret, const T&, Args&&...>;
 
-    template <typename DT, typename C, typename... DTArgs>
-    unique_func(int, std::in_place_type_t<DT>, C, DTArgs&& ...args)
+    template <typename DT, typename... DTArgs>
+    unique_func(int, std::in_place_type_t<DT>, DTArgs&& ...args)
     {
-        constexpr bool Const = C::value;
-
         if constexpr(uf_details::must_be_implicit_lifetime_type<DT>)
         {
-            m_invoker = uf_details::internal_invoker<Ret(Args...), Const, DT>::s_invoke;
+            m_invoker = uf_details::invoker<Ret(Args...), DT, false>::s_invoke;
             m_manager = nullptr;
             new(&m_storage) DT(std::forward<DTArgs>(args)...);
         }
         else if constexpr(uf_details::is_inplace<DT>)
         {
-            m_invoker = uf_details::internal_invoker<Ret(Args...), Const, DT>::s_invoke;
+            m_invoker = uf_details::invoker<Ret(Args...), DT, false>::s_invoke;
             m_manager = uf_details::internal_manager<DT>::s_manage;
             new (&m_storage) DT(std::forward<DTArgs>(args)...);
         }
         else
         {
-            m_invoker = uf_details::external_invoker<Ret(Args...), Const, DT>::s_invoke;
+            m_invoker = uf_details::invoker<Ret(Args...), DT, true>::s_invoke;
             m_manager = uf_details::external_manager<DT>::s_manage;
             new (&m_storage) DT*(new DT(std::forward<DTArgs>(args)...));
         }
@@ -226,8 +220,14 @@ public:
 
     Ret operator()(Args&&... args) const
     {
-        return m_invoker(m_storage, std::forward<Args>(args)...);
+        return m_invoker(m_storage, std::forward<Args>(args)..., true);
     }
+
+    Ret operator()(Args&&... args)
+    {
+        return m_invoker(m_storage, std::forward<Args>(args)..., false);
+    }
+
 
     explicit operator bool() const noexcept
     {
@@ -235,24 +235,13 @@ public:
     }
 
     template <typename T, std::enable_if_t<proper_type<std::decay_t<T>>, int> = 0>
-    unique_func(T&& t) : unique_func(0, std::in_place_type<std::decay_t<T>>, std::true_type(), std::forward<T>(t))
-    {
-    }
-
-    template <typename T, std::enable_if_t<proper_type<std::decay_t<T>>, int> = 0>
-    unique_func(use_non_const_type, T&& t) : unique_func(0, std::in_place_type<std::decay_t<T>>, std::false_type(), std::forward<T>(t))
+    unique_func(T&& t) : unique_func(0, std::in_place_type<std::decay_t<T>>, std::forward<T>(t))
     {
     }
 
     template <typename T, typename ...DTArgs, std::enable_if_t<proper_type<T>, int> = 0>
     unique_func(std::in_place_type_t<T>, DTArgs&& ...args)
-        : unique_func(0, std::in_place_type<T>, std::true_type(), std::forward<DTArgs>(args)...)
-    {
-    }
-
-    template <typename T, typename ...DTArgs, std::enable_if_t<proper_type<T>, int> = 0>
-    unique_func(std::in_place_type_t<T>, use_non_const_type, DTArgs&& ...args)
-        : unique_func(0, std::in_place_type<T>, std::false_type(), std::forward<DTArgs>(args)...)
+        : unique_func(0, std::in_place_type<T>, std::forward<DTArgs>(args)...)
     {
     }
 };

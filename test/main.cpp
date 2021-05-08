@@ -245,6 +245,12 @@ static_assert (!std::is_copy_assignable_v<vv6::unique_func<int(int)>>);
 static constexpr F a;
 
 template <typename T>
+const T& as_const(T& a)
+{
+    return a;
+}
+
+template <typename T>
 void test_a(T& a)
 {
     vv6::unique_func<int(int)> f(a);
@@ -255,8 +261,8 @@ void test_a(T& a)
     BOOST_TEST(g(0) == 42);
 
     vv6::unique_func<int(int)> f2(a),
-            f3(vv6::use_non_const, a);
-    BOOST_TEST(f2(10) == 52);
+            f3(a);
+    BOOST_TEST(as_const(f2)(10) == 52);
     BOOST_TEST(f3(10) == 32);
 
     vv6::unique_func<int(int)> f4(std::move(f));
@@ -301,9 +307,9 @@ BOOST_AUTO_TEST_CASE(test3)
 BOOST_AUTO_TEST_CASE(test4)
 {
     vv6::unique_func<int(int)> f1(std::in_place_type<F>, 20);
-    BOOST_TEST(f1(10) == 30);
+    BOOST_TEST(as_const(f1)(10) == 30);
 
-    vv6::unique_func<int(int)> f2(std::in_place_type<F>, vv6::use_non_const, 20);
+    vv6::unique_func<int(int)> f2(std::in_place_type<F>, 20);
     BOOST_TEST(f2(10) == 10);
 }
 
