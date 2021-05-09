@@ -322,6 +322,16 @@ BOOST_AUTO_TEST_CASE(test_void)
     BOOST_TEST(bool(f));
 }
 
+BOOST_AUTO_TEST_CASE(upcast)
+{
+    vv6::unique_func<int(int) const> f(a);
+    BOOST_TEST(f(10) == 52);
+
+    vv6::unique_func<int(int)> g(std::move(f));
+    BOOST_TEST(!f);
+    BOOST_TEST(g(10) == 52);
+}
+
 BOOST_AUTO_TEST_CASE(variance)
 {
     struct A {};

@@ -238,6 +238,10 @@ public:
         base_type::template construct<signature_type, T>(this, std::forward<DTArgs>(args)...);
     }
 
+    unique_func(unique_func<Ret(Args...) const>&& other) : base_type(std::move(other))
+    {
+    }
+
     Ret operator()(Args&& ...args)
     {
         return base_type::m_invoker(base_type::m_storage, std::forward<Args>(args)...);
