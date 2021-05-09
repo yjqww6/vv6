@@ -45,16 +45,43 @@ struct external_manager
     }
 };
 
+template <typename T, typename Alloc, typename = void>
+struct with_allocator;
+
 template <typename T, typename Alloc>
-struct with_allocator
+struct with_allocator<T, Alloc, std::enable_if_t<!std::is_final_v<Alloc>>> : Alloc
 {
-    [[no_unique_address]] Alloc alloc_;
+    T t_;
+
+    template <typename... Args>
+    with_allocator(const Alloc& alloc, Args&& ...args) : Alloc(alloc),  t_(std::forward<Args>(args)...)
+    {
+
+    }
+
+    using allocator_type = Alloc;
+    const Alloc& get_allocator() const
+    {
+        return static_cast<const Alloc&>(*this);
+    }
+};
+
+template <typename T, typename Alloc>
+struct with_allocator<T, Alloc, std::enable_if_t<std::is_final_v<Alloc>>>
+{
+    Alloc alloc_;
     T t_;
 
     template <typename... Args>
     with_allocator(const Alloc& alloc, Args&& ...args) : alloc_(alloc),  t_(std::forward<Args>(args)...)
     {
 
+    }
+
+    using allocator_type = Alloc;
+    const Alloc& get_allocator() const
+    {
+        return static_cast<const Alloc&>(alloc_);
     }
 };
 
@@ -73,7 +100,7 @@ struct external_manager<with_allocator<T, Alloc>>
             auto p = *reinterpret_cast<with_allocator<T, Alloc>**>(src);
             using A = typename std::allocator_traits<Alloc>
             ::template rebind_alloc<with_allocator<T, Alloc>>;
-            A alloc(p->alloc_);
+            A alloc(p->get_allocator());
             std::allocator_traits<A>::destroy(alloc, p);
             std::allocator_traits<A>::deallocate(alloc, p, 1);
         }
