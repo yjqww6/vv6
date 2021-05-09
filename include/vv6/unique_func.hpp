@@ -2,7 +2,6 @@
 
 #include <cstring>
 #include <cstddef>
-#include <exception>
 #include "func_view.hpp"
 
 namespace vv6
@@ -95,83 +94,64 @@ decltype(auto) storage_cast(const storage_type& obj)
     }
 }
 
-class not_const_invocable : public std::exception
-{
-public:
-    const char* what() const noexcept override
-    {
-        return "this unique_func is not const invocable";
-    }
-};
-
 template <typename Sig, typename T, bool External>
 struct invoker;
 
 template <typename Ret, typename... Args, typename T, bool External>
-struct invoker<Ret(Args...), T, External>
+struct invoker<Ret(Args...) const, T, External>
 {
-    static Ret s_invoke(const storage_type& obj, details::argument_t<Args>... args, bool is_const)
+    static Ret s_invoke(const storage_type& obj, details::argument_t<Args>... args)
     {
-        if(is_const)
-        {
-            if constexpr(std::is_invocable_r_v<Ret, const T&, Args&&...>)
-            {
 
-                return static_cast<Ret>(storage_cast<T, true, External>(obj)(std::forward<Args>(args)...));
-            }
-            else
-            {
-                throw not_const_invocable();
-            }
-        }
-        else
-        {
-
-            return static_cast<Ret>(storage_cast<T, false, External>(obj)(std::forward<Args>(args)...));
-        }
+        return static_cast<Ret>(storage_cast<T, true, External>(obj)(std::forward<Args>(args)...));
     }
 };
 
-}
+template <typename Ret, typename... Args, typename T, bool External>
+struct invoker<Ret(Args...), T, External>
+{
+    static Ret s_invoke(const storage_type& obj, details::argument_t<Args>... args)
+    {
+
+        return static_cast<Ret>(storage_cast<T, false, External>(obj)(std::forward<Args>(args)...));
+    }
+};
 
 template <typename Sig>
-class unique_func;
+class unique_func_base;
 
 template <typename Ret, typename... Args>
-class unique_func<Ret(Args...)>
+class unique_func_base<Ret(Args...)>
 {
-    Ret (*m_invoker)(const uf_details::storage_type& obj, details::argument_t<Args>... args, bool);
-    uf_details::manager_type m_manager;
-    uf_details::storage_type m_storage;
+protected:
+    Ret (*m_invoker)(const storage_type& obj, details::argument_t<Args>... args);
+    manager_type m_manager;
+    storage_type m_storage;
 
-    template <typename T>
-    static constexpr bool proper_type = !std::is_convertible_v<T*, unique_func*> &&
-            std::is_invocable_r_v<Ret, T&, Args&&...>;
-
-    template <typename DT, typename... DTArgs>
-    unique_func(int, std::in_place_type_t<DT>, DTArgs&& ...args)
+    template <typename Sig, typename DT, typename... DTArgs>
+    static constexpr void construct(unique_func_base* self, DTArgs&& ...args)
     {
-        if constexpr(uf_details::must_be_implicit_lifetime_type<DT>)
+        if constexpr(must_be_implicit_lifetime_type<DT>)
         {
-            m_invoker = uf_details::invoker<Ret(Args...), DT, false>::s_invoke;
-            m_manager = nullptr;
-            new(&m_storage) DT(std::forward<DTArgs>(args)...);
+            self->m_invoker = invoker<Sig, DT, false>::s_invoke;
+            self->m_manager = nullptr;
+            new(&self->m_storage) DT(std::forward<DTArgs>(args)...);
         }
-        else if constexpr(uf_details::is_inplace<DT>)
+        else if constexpr(is_inplace<DT>)
         {
-            m_invoker = uf_details::invoker<Ret(Args...), DT, false>::s_invoke;
-            m_manager = uf_details::internal_manager<DT>::s_manage;
-            new (&m_storage) DT(std::forward<DTArgs>(args)...);
+            self->m_invoker = invoker<Sig, DT, false>::s_invoke;
+            self->m_manager = internal_manager<DT>::s_manage;
+            new (&self->m_storage) DT(std::forward<DTArgs>(args)...);
         }
         else
         {
-            m_invoker = uf_details::invoker<Ret(Args...), DT, true>::s_invoke;
-            m_manager = uf_details::external_manager<DT>::s_manage;
-            new (&m_storage) DT*(new DT(std::forward<DTArgs>(args)...));
+            self->m_invoker = invoker<Sig, DT, true>::s_invoke;
+            self->m_manager = external_manager<DT>::s_manage;
+            new (&self->m_storage) DT*(new DT(std::forward<DTArgs>(args)...));
         }
     }
 public:
-    constexpr unique_func() noexcept:
+    constexpr unique_func_base() noexcept:
         m_invoker(nullptr),
         m_manager(nullptr),
         m_storage()
@@ -179,13 +159,13 @@ public:
 
     }
 
-    unique_func(const unique_func&) = delete;
+    unique_func_base(const unique_func_base&) = delete;
 
-    unique_func(unique_func&& other) noexcept : m_invoker(other.m_invoker), m_manager(other.m_manager)
+    unique_func_base(unique_func_base&& other) noexcept : m_invoker(other.m_invoker), m_manager(other.m_manager)
     {
         if(m_manager)
         {
-            m_manager(&other.m_storage, &m_storage, uf_details::MoveAndDestroy);
+            m_manager(&other.m_storage, &m_storage, MoveAndDestroy);
         }
         else
         {
@@ -196,13 +176,13 @@ public:
         other.m_manager = nullptr;
     }
 
-    unique_func& operator=(unique_func&& other) noexcept
+    unique_func_base& operator=(unique_func_base&& other) noexcept
     {
         m_invoker = other.m_invoker;
         m_manager = other.m_manager;
         if(m_manager)
         {
-            m_manager(&other.m_storage, &m_storage, uf_details::MoveAndDestroy);
+            m_manager(&other.m_storage, &m_storage, MoveAndDestroy);
         }
         else
         {
@@ -213,41 +193,83 @@ public:
         return *this;
     }
 
-    unique_func& operator=(const unique_func& other) = delete;
+    unique_func_base& operator=(const unique_func_base& other) = delete;
 
-    ~unique_func()
+    ~unique_func_base()
     {
         if(m_manager)
         {
-            m_manager(&m_storage, nullptr, uf_details::Destroy);
+            m_manager(&m_storage, nullptr, Destroy);
         }
     }
-
-    Ret operator()(Args&&... args) const
-    {
-        return m_invoker(m_storage, std::forward<Args>(args)..., true);
-    }
-
-    Ret operator()(Args&&... args)
-    {
-        return m_invoker(m_storage, std::forward<Args>(args)..., false);
-    }
-
 
     explicit operator bool() const noexcept
     {
         return m_invoker != nullptr;
     }
+};
 
-    template <typename T, std::enable_if_t<proper_type<std::decay_t<T>>, int> = 0>
-    unique_func(T&& t) : unique_func(0, std::in_place_type<std::decay_t<T>>, std::forward<T>(t))
+}
+
+template <typename Sig>
+class unique_func;
+
+template <typename Ret, typename... Args>
+class unique_func<Ret(Args...)> : public uf_details::unique_func_base<Ret(Args...)>
+{
+    using signature_type = Ret(Args ...);
+    using base_type = uf_details::unique_func_base<Ret(Args...)>;
+public:
+    template <typename T>
+    static constexpr bool proper = !std::is_convertible_v<T*, unique_func*> &&
+            std::is_invocable_r_v<Ret, T&, Args&&...>;
+
+    using base_type::base_type;
+
+    template <typename T, std::enable_if_t<proper<std::decay_t<T>>, int> = 0>
+    unique_func(T&& t)
     {
+        base_type::template construct<signature_type, std::decay_t<T>>(this, std::forward<T>(t));
     }
 
-    template <typename T, typename ...DTArgs, std::enable_if_t<proper_type<T>, int> = 0>
-    unique_func(std::in_place_type_t<T>, DTArgs&& ...args)
-        : unique_func(0, std::in_place_type<T>, std::forward<DTArgs>(args)...)
+    template <typename T, typename... DTArgs, std::enable_if_t<proper<std::decay_t<T>>, int> = 0>
+    unique_func(std::in_place_type_t<T>, DTArgs&&... args)
     {
+        base_type::template construct<signature_type, T>(this, std::forward<DTArgs>(args)...);
+    }
+
+    Ret operator()(Args&& ...args)
+    {
+        return base_type::m_invoker(base_type::m_storage, std::forward<Args>(args)...);
+    }
+};
+
+template <typename Ret, typename... Args>
+class unique_func<Ret(Args...) const> : public uf_details::unique_func_base<Ret(Args...)>
+{
+    using signature_type = Ret(Args ...) const;
+    using base_type = uf_details::unique_func_base<Ret(Args...)>;
+    template <typename T>
+    static constexpr bool proper = !std::is_convertible_v<T*, unique_func*> &&
+            std::is_invocable_r_v<Ret, const T&, Args&&...>;
+public:
+    using base_type::base_type;
+
+    template <typename T, std::enable_if_t<proper<std::decay_t<T>>, int> = 0>
+    unique_func(T&& t)
+    {
+        base_type::template construct<signature_type, std::decay_t<T>>(this, std::forward<T>(t));
+    }
+
+    template <typename T, typename... DTArgs, std::enable_if_t<proper<std::decay_t<T>>, int> = 0>
+    unique_func(std::in_place_type_t<T>, DTArgs&&... args)
+    {
+        base_type::template construct<signature_type, T>(this, std::forward<DTArgs>(args)...);
+    }
+
+    Ret operator()(Args&& ...args) const
+    {
+        return base_type::m_invoker(base_type::m_storage, std::forward<Args>(args)...);
     }
 };
 

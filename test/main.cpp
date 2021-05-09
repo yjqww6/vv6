@@ -253,25 +253,28 @@ const T& as_const(T& a)
 template <typename T>
 void test_a(T& a)
 {
-    vv6::unique_func<int(int)> f(a);
+    vv6::unique_func<int(int) const> f(a);
 
     BOOST_TEST(f(0) == 42);
 
-    vv6::unique_func<int(int)> g(F::f);
-    BOOST_TEST(g(0) == 42);
-
-    vv6::unique_func<int(int)> f2(a),
-            f3(a);
-    BOOST_TEST(as_const(f2)(10) == 52);
+    vv6::unique_func<int(int) const> f2(a);
+    vv6::unique_func<int(int)> f3(a);
+    BOOST_TEST(f2(10) == 52);
     BOOST_TEST(f3(10) == 32);
 
-    vv6::unique_func<int(int)> f4(std::move(f));
+    vv6::unique_func<int(int) const> f4(std::move(f));
     BOOST_TEST(f4(0) == 42);
     BOOST_TEST(!f);
     f = std::move(f4);
     BOOST_TEST(!f4);
     BOOST_TEST(bool(f));
     BOOST_TEST(f(0) == 42);
+}
+
+BOOST_AUTO_TEST_CASE(fp)
+{
+    vv6::unique_func<int(int)> g(F::f);
+    BOOST_TEST(g(0) == 42);
 }
 
 BOOST_AUTO_TEST_CASE(test1)
@@ -306,8 +309,8 @@ BOOST_AUTO_TEST_CASE(test3)
 
 BOOST_AUTO_TEST_CASE(test4)
 {
-    vv6::unique_func<int(int)> f1(std::in_place_type<F>, 20);
-    BOOST_TEST(as_const(f1)(10) == 30);
+    vv6::unique_func<int(int) const> f1(std::in_place_type<F>, 20);
+    BOOST_TEST(f1(10) == 30);
 
     vv6::unique_func<int(int)> f2(std::in_place_type<F>, 20);
     BOOST_TEST(f2(10) == 10);
@@ -339,21 +342,6 @@ BOOST_AUTO_TEST_CASE(variance)
 
     static_assert (!std::is_constructible_v<vv6::unique_func<C(B)>, F1&>);
     static_assert (!std::is_constructible_v<vv6::unique_func<B(A)>, F1&>);
-}
-
-BOOST_AUTO_TEST_CASE(non_const_only)
-{
-    struct F
-    {
-        int operator()(int x)
-        {
-            return x;
-        }
-    } a;
-
-    vv6::unique_func<int(int)> f(a);
-    BOOST_TEST(f(100) == 100);
-    BOOST_CHECK_THROW(as_const(f)(100), vv6::uf_details::not_const_invocable);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
