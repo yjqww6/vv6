@@ -123,11 +123,10 @@ class unique_func_base;
 template <typename Ret, typename... Args>
 class unique_func_base<Ret(Args...)>
 {
-protected:
     Ret (*m_invoker)(const storage_type& obj, details::argument_t<Args>... args);
     manager_type m_manager;
     storage_type m_storage;
-
+protected:
     template <typename Sig, typename DT, typename... DTArgs>
     static constexpr void construct(unique_func_base* self, DTArgs&& ...args)
     {
@@ -149,6 +148,11 @@ protected:
             self->m_manager = external_manager<DT>::s_manage;
             new (&self->m_storage) DT*(new DT(std::forward<DTArgs>(args)...));
         }
+    }
+
+    Ret call(Args&& ...args) const
+    {
+        return m_invoker(m_storage, std::forward<Args>(args)...);
     }
 public:
     constexpr unique_func_base() noexcept:
@@ -219,11 +223,10 @@ class unique_func<Ret(Args...)> : public uf_details::unique_func_base<Ret(Args..
 {
     using signature_type = Ret(Args ...);
     using base_type = uf_details::unique_func_base<Ret(Args...)>;
-public:
     template <typename T>
     static constexpr bool proper = !std::is_convertible_v<T*, unique_func*> &&
             std::is_invocable_r_v<Ret, T&, Args&&...>;
-
+public:
     using base_type::base_type;
 
     template <typename T, std::enable_if_t<proper<std::decay_t<T>>, int> = 0>
@@ -244,7 +247,7 @@ public:
 
     Ret operator()(Args&& ...args)
     {
-        return base_type::m_invoker(base_type::m_storage, std::forward<Args>(args)...);
+        return base_type::call(std::forward<Args>(args)...);
     }
 };
 
@@ -273,7 +276,7 @@ public:
 
     Ret operator()(Args&& ...args) const
     {
-        return base_type::m_invoker(base_type::m_storage, std::forward<Args>(args)...);
+        return base_type::call(std::forward<Args>(args)...);
     }
 };
 
