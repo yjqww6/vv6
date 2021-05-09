@@ -17,15 +17,9 @@ static constexpr bool must_be_implicit_lifetime_type =
         std::is_trivially_move_constructible_v<T> &&
         std::is_trivially_copy_constructible_v<T>;
 
-enum uf_op
-{
-    MoveAndDestroy, Destroy
-};
-
-
 using storage_type = std::aligned_storage_t<2 * sizeof(std::max_align_t), alignof(std::max_align_t)>;
 
-using manager_type = void(*)(storage_type*, storage_type*, uf_op) noexcept;
+using manager_type = void(*)(storage_type*, storage_type*) noexcept;
 
 template <typename T>
 static constexpr bool is_inplace =
@@ -37,14 +31,14 @@ static constexpr bool is_inplace =
 template <typename T>
 struct external_manager
 {
-    static void s_manage(storage_type* src, storage_type* dst, uf_op op) noexcept
+    static void s_manage(storage_type* src, storage_type* dst) noexcept
     {
-        if(op == uf_op::MoveAndDestroy)
+        if(dst)
         {
             *reinterpret_cast<T**>(dst) = *reinterpret_cast<T**>(src);
             *reinterpret_cast<T**>(src) = nullptr;
         }
-        else if(op == uf_op::Destroy)
+        else
         {
             delete *reinterpret_cast<T**>(src);
         }
@@ -67,14 +61,14 @@ struct with_allocator
 template <typename T, typename Alloc>
 struct external_manager<with_allocator<T, Alloc>>
 {
-    static void s_manage(storage_type* src, storage_type* dst, uf_op op) noexcept
+    static void s_manage(storage_type* src, storage_type* dst) noexcept
     {
-        if(op == uf_op::MoveAndDestroy)
+        if(dst)
         {
             *reinterpret_cast<T**>(dst) = *reinterpret_cast<T**>(src);
             *reinterpret_cast<T**>(src) = nullptr;
         }
-        else if(op == uf_op::Destroy)
+        else
         {
             auto p = *reinterpret_cast<with_allocator<T, Alloc>**>(src);
             using A = typename std::allocator_traits<Alloc>
@@ -89,14 +83,14 @@ struct external_manager<with_allocator<T, Alloc>>
 template <typename T>
 struct internal_manager
 {
-    static void s_manage(storage_type* src, storage_type* dst, uf_op op) noexcept
+    static void s_manage(storage_type* src, storage_type* dst) noexcept
     {
-        if(op == uf_op::MoveAndDestroy)
+        if(dst)
         {
             new(dst) T(std::move(*reinterpret_cast<T*>(src)));
             reinterpret_cast<T*>(src)->~T();
         }
-        else if(op == uf_op::Destroy)
+        else
         {
             reinterpret_cast<T*>(src)->~T();
         }
@@ -272,7 +266,7 @@ public:
     {
         if(m_manager)
         {
-            m_manager(&other.m_storage, &m_storage, MoveAndDestroy);
+            m_manager(&other.m_storage, &m_storage);
         }
         else
         {
@@ -289,7 +283,7 @@ public:
         m_manager = other.m_manager;
         if(m_manager)
         {
-            m_manager(&other.m_storage, &m_storage, MoveAndDestroy);
+            m_manager(&other.m_storage, &m_storage);
         }
         else
         {
@@ -306,7 +300,7 @@ public:
     {
         if(m_manager)
         {
-            m_manager(&m_storage, nullptr, Destroy);
+            m_manager(&m_storage, nullptr);
         }
     }
 
