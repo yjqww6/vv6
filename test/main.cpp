@@ -294,6 +294,47 @@ BOOST_AUTO_TEST_CASE(test2)
     test_a(a);
 }
 
+std::size_t allocated = 0;
+std::size_t deallocated = 0;
+
+template <typename T>
+struct allocator
+{
+    allocator() = default;
+
+    template <typename U>
+    allocator(const allocator<U>&) {}
+
+    using value_type = T;
+
+    T* allocate(std::size_t n)
+    {
+        auto p = static_cast<T*>(std::malloc(sizeof(T) * n));
+        if(p == nullptr)
+        {
+            throw std::bad_alloc();
+        }
+        allocated += sizeof(T) * n;
+        return p;
+    }
+
+    void deallocate(T* p, std::size_t n)
+    {
+        std::free(p);
+        deallocated += sizeof(T) * n;
+    }
+
+    bool operator==(const allocator&) const noexcept
+    {
+        return true;
+    }
+
+    bool operator!=(const allocator&) const noexcept
+    {
+        return false;
+    }
+};
+
 BOOST_AUTO_TEST_CASE(test3)
 {
     struct A : F
@@ -305,6 +346,14 @@ BOOST_AUTO_TEST_CASE(test3)
 
     static_assert(!vv6::uf_details::is_inplace<A>);
     test_a(a);
+
+    {
+        vv6::unique_func<int(int)> x(std::allocator_arg, allocator<void>(), a);
+        BOOST_TEST(x(0) == 42);
+        BOOST_TEST(allocated > 0);
+        BOOST_TEST(allocated == sizeof(A));
+    }
+    BOOST_TEST(allocated == deallocated);
 }
 
 BOOST_AUTO_TEST_CASE(test4)

@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <cstddef>
+#include <memory>
 #include "func_view.hpp"
 
 namespace vv6
@@ -46,6 +47,41 @@ struct external_manager
         else if(op == uf_op::Destroy)
         {
             delete *reinterpret_cast<T**>(src);
+        }
+    }
+};
+
+template <typename T, typename Alloc>
+struct with_allocator
+{
+    [[no_unique_address]] Alloc alloc_;
+    T t_;
+
+    template <typename... Args>
+    with_allocator(const Alloc& alloc, Args&& ...args) : alloc_(alloc),  t_(std::forward<Args>(args)...)
+    {
+
+    }
+};
+
+template <typename T, typename Alloc>
+struct external_manager<with_allocator<T, Alloc>>
+{
+    static void s_manage(storage_type* src, storage_type* dst, uf_op op) noexcept
+    {
+        if(op == uf_op::MoveAndDestroy)
+        {
+            *reinterpret_cast<T**>(dst) = *reinterpret_cast<T**>(src);
+            *reinterpret_cast<T**>(src) = nullptr;
+        }
+        else if(op == uf_op::Destroy)
+        {
+            auto p = *reinterpret_cast<with_allocator<T, Alloc>**>(src);
+            using A = typename std::allocator_traits<Alloc>
+            ::template rebind_alloc<with_allocator<T, Alloc>>;
+            A alloc(p->alloc_);
+            std::allocator_traits<A>::destroy(alloc, p);
+            std::allocator_traits<A>::deallocate(alloc, p, 1);
         }
     }
 };
@@ -117,6 +153,28 @@ struct invoker<Ret(Args...), T, External>
     }
 };
 
+template <typename Ret, typename... Args, typename T, typename Alloc>
+struct invoker<Ret(Args...) const, with_allocator<T, Alloc>, true>
+{
+    static Ret s_invoke(const storage_type& obj, details::argument_t<Args>... args)
+    {
+        using w = with_allocator<T, Alloc>;
+        const T& t = (**reinterpret_cast<const w* const *>(&obj)).t_;
+        return static_cast<Ret>(t(std::forward<Args>(args)...));
+    }
+};
+
+template <typename Ret, typename... Args, typename T, typename Alloc>
+struct invoker<Ret(Args...), with_allocator<T, Alloc>, true>
+{
+    static Ret s_invoke(const storage_type& obj, details::argument_t<Args>... args)
+    {
+        using w = with_allocator<T, Alloc>;
+        T& t = (*const_cast<w*>(*reinterpret_cast<const w* const *>(&obj))).t_;
+        return static_cast<Ret>(t(std::forward<Args>(args)...));
+    }
+};
+
 template <typename Sig>
 class unique_func_base;
 
@@ -147,6 +205,51 @@ protected:
             self->m_invoker = invoker<Sig, DT, true>::s_invoke;
             self->m_manager = external_manager<DT>::s_manage;
             new (&self->m_storage) DT*(new DT(std::forward<DTArgs>(args)...));
+        }
+    }
+
+    template <typename Sig, typename DT, typename Allocator, typename... DTArgs>
+    static void construct(unique_func_base* self, std::allocator_arg_t, const Allocator& alloc, DTArgs&& ...args)
+    {
+        if constexpr(must_be_implicit_lifetime_type<DT>)
+        {
+            self->m_invoker = invoker<Sig, DT, false>::s_invoke;
+            self->m_manager = nullptr;
+            new(&self->m_storage) DT(std::forward<DTArgs>(args)...);
+        }
+        else if constexpr(is_inplace<DT>)
+        {
+            self->m_invoker = invoker<Sig, DT, false>::s_invoke;
+            self->m_manager = internal_manager<DT>::s_manage;
+            new (&self->m_storage) DT(std::forward<DTArgs>(args)...);
+        }
+        else
+        {
+            using type = with_allocator<DT, Allocator>;
+            self->m_invoker = invoker<Sig, type, true>::s_invoke;
+            self->m_manager = external_manager<type>::s_manage;
+
+            using A = typename std::allocator_traits<Allocator>
+            ::template rebind_alloc<type>;
+            A a(alloc);
+            type *p = std::allocator_traits<A>::allocate(a, 1);
+            if constexpr (std::is_nothrow_constructible_v<DT, DTArgs&&...>)
+            {
+                std::allocator_traits<A>::construct(a, p, alloc, std::forward<DTArgs>(args)...);
+            }
+            else
+            {
+                try
+                {
+                    std::allocator_traits<A>::construct(a, p, alloc, std::forward<DTArgs>(args)...);
+                }
+                catch (...)
+                {
+                    std::allocator_traits<A>::deallocate(a, p, 1);
+                    throw;
+                }
+            }
+            new (&self->m_storage) type*(p);
         }
     }
 
@@ -235,10 +338,22 @@ public:
         base_type::template construct<signature_type, std::decay_t<T>>(this, std::forward<T>(t));
     }
 
+    template <typename Allocator, typename T, std::enable_if_t<proper<std::decay_t<T>>, int> = 0>
+    unique_func(std::allocator_arg_t, const Allocator& a, T&& t)
+    {
+        base_type::template construct<signature_type, std::decay_t<T>>(this, std::allocator_arg, a, std::forward<T>(t));
+    }
+
     template <typename T, typename... DTArgs, std::enable_if_t<proper<std::decay_t<T>>, int> = 0>
     unique_func(std::in_place_type_t<T>, DTArgs&&... args)
     {
         base_type::template construct<signature_type, T>(this, std::forward<DTArgs>(args)...);
+    }
+
+    template <typename Allocator, typename T, typename... DTArgs, std::enable_if_t<proper<std::decay_t<T>>, int> = 0>
+    unique_func(std::in_place_type_t<T>, std::allocator_arg_t, const Allocator& a, DTArgs&&... args)
+    {
+        base_type::template construct<signature_type, T>(this, std::allocator_arg, a, std::forward<DTArgs>(args)...);
     }
 
     unique_func(unique_func<Ret(Args...) const>&& other) : base_type(std::move(other))
