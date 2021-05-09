@@ -54,4 +54,4 @@ jobs:
       - name: Test
         run: |
             cd build
-            ctest -C ${{ matrix.build-type }}
+            ctest -C ${{ matrix.build-type }} --output-on-failure 
