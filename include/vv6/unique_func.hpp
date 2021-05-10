@@ -45,19 +45,13 @@ struct external_manager
     }
 };
 
-template <typename T, typename Alloc, typename = void>
-struct with_allocator;
+template <typename Alloc, typename = void>
+struct with_allocator_base;
 
-template <typename T, typename Alloc>
-struct with_allocator<T, Alloc, std::enable_if_t<!std::is_final_v<Alloc>>> : Alloc
+template <typename Alloc>
+struct with_allocator_base<Alloc, std::enable_if_t<!std::is_final_v<Alloc>>> : Alloc
 {
-    T t_;
-
-    template <typename... Args>
-    with_allocator(const Alloc& alloc, Args&& ...args) : Alloc(alloc),  t_(std::forward<Args>(args)...)
-    {
-
-    }
+    with_allocator_base(const Alloc& alloc) : Alloc(alloc) {}
 
     using allocator_type = Alloc;
     const Alloc& get_allocator() const
@@ -66,22 +60,40 @@ struct with_allocator<T, Alloc, std::enable_if_t<!std::is_final_v<Alloc>>> : All
     }
 };
 
-template <typename T, typename Alloc>
-struct with_allocator<T, Alloc, std::enable_if_t<std::is_final_v<Alloc>>>
+template <typename Alloc>
+struct with_allocator_base<Alloc, std::enable_if_t<std::is_final_v<Alloc>>>
 {
     Alloc alloc_;
-    T t_;
-
-    template <typename... Args>
-    with_allocator(const Alloc& alloc, Args&& ...args) : alloc_(alloc),  t_(std::forward<Args>(args)...)
-    {
-
-    }
 
     using allocator_type = Alloc;
     const Alloc& get_allocator() const
     {
-        return static_cast<const Alloc&>(alloc_);
+        return alloc_;
+    }
+};
+
+template <typename T, typename Alloc>
+struct with_allocator : with_allocator_base<Alloc>
+{
+    T t_;
+
+    template <typename... Args>
+    with_allocator(const Alloc& alloc, Args&& ...args) :
+        with_allocator_base<Alloc>{alloc},  t_(std::forward<Args>(args)...)
+    {
+
+    }
+
+    template <typename... Args>
+    decltype(auto) operator()(Args&& ...args)
+    {
+        return t_(std::forward<Args>(args)...);
+    }
+
+    template <typename... Args>
+    decltype(auto) operator()(Args&& ...args) const
+    {
+        return t_(std::forward<Args>(args)...);
     }
 };
 
@@ -171,28 +183,6 @@ struct invoker<Ret(Args...), T, External>
     {
 
         return static_cast<Ret>(storage_cast<T, false, External>(obj)(std::forward<Args>(args)...));
-    }
-};
-
-template <typename Ret, typename... Args, typename T, typename Alloc>
-struct invoker<Ret(Args...) const, with_allocator<T, Alloc>, true>
-{
-    static Ret s_invoke(const storage_type& obj, details::argument_t<Args>... args)
-    {
-        using w = with_allocator<T, Alloc>;
-        const T& t = (**reinterpret_cast<const w* const *>(&obj)).t_;
-        return static_cast<Ret>(t(std::forward<Args>(args)...));
-    }
-};
-
-template <typename Ret, typename... Args, typename T, typename Alloc>
-struct invoker<Ret(Args...), with_allocator<T, Alloc>, true>
-{
-    static Ret s_invoke(const storage_type& obj, details::argument_t<Args>... args)
-    {
-        using w = with_allocator<T, Alloc>;
-        T& t = (*const_cast<w*>(*reinterpret_cast<const w* const *>(&obj))).t_;
-        return static_cast<Ret>(t(std::forward<Args>(args)...));
     }
 };
 
