@@ -219,8 +219,8 @@ protected:
         }
     }
 
-    template <typename Sig, typename DT, typename Allocator, typename... DTArgs>
-    static void construct(unique_func_base* self, std::allocator_arg_t, const Allocator& alloc, DTArgs&& ...args)
+    template <typename Sig, typename DT, typename Alloc, typename... DTArgs>
+    static void construct(unique_func_base* self, std::allocator_arg_t, Alloc&& alloc, DTArgs&& ...args)
     {
         if constexpr(must_be_implicit_lifetime_type<DT>)
         {
@@ -236,6 +236,7 @@ protected:
         }
         else
         {
+            using Allocator = std::decay_t<Alloc>;
             using type = with_allocator<DT, Allocator>;
             self->m_invoker = invoker<Sig, type, true>::s_invoke;
             self->m_manager = external_manager<type>::s_manage;
@@ -361,12 +362,6 @@ public:
         base_type::template construct<signature_type, T>(this, std::forward<DTArgs>(args)...);
     }
 
-    template <typename Allocator, typename T, typename... DTArgs, std::enable_if_t<proper<std::decay_t<T>>, int> = 0>
-    unique_func(std::in_place_type_t<T>, std::allocator_arg_t, const Allocator& a, DTArgs&&... args)
-    {
-        base_type::template construct<signature_type, T>(this, std::allocator_arg, a, std::forward<DTArgs>(args)...);
-    }
-
     unique_func(unique_func<Ret(Args...) const>&& other) : base_type(std::move(other))
     {
     }
@@ -392,6 +387,12 @@ public:
     unique_func(T&& t)
     {
         base_type::template construct<signature_type, std::decay_t<T>>(this, std::forward<T>(t));
+    }
+
+    template <typename Allocator, typename T, std::enable_if_t<proper<std::decay_t<T>>, int> = 0>
+    unique_func(std::allocator_arg_t, const Allocator& a, T&& t)
+    {
+        base_type::template construct<signature_type, std::decay_t<T>>(this, std::allocator_arg, a, std::forward<T>(t));
     }
 
     template <typename T, typename... DTArgs, std::enable_if_t<proper<std::decay_t<T>>, int> = 0>

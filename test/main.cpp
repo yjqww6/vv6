@@ -354,6 +354,9 @@ BOOST_AUTO_TEST_CASE(test3)
         BOOST_TEST(allocated == sizeof(A));
     }
     BOOST_TEST(allocated == deallocated);
+
+    vv6::unique_func<int(int) const> x(std::allocator_arg, allocator<void>(), a);
+    vv6::unique_func<int(int) const> y(std::in_place_type<A>, std::allocator_arg, allocator<void>(), a);
 }
 
 BOOST_AUTO_TEST_CASE(test4)
