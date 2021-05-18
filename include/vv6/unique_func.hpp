@@ -11,6 +11,12 @@ namespace vv6
 namespace uf_details
 {
 
+template <typename T, typename U>
+T launder_cast(U* ptr)
+{
+    return std::launder(reinterpret_cast<T>(ptr));
+}
+
 template <typename T>
 static constexpr bool must_be_implicit_lifetime_type =
         std::is_trivially_destructible_v<T> &&
@@ -33,14 +39,15 @@ struct external_manager
 {
     static void s_manage(storage_type* src, storage_type* dst) noexcept
     {
+        auto s = launder_cast<T**>(src);
         if(dst)
         {
-            *reinterpret_cast<T**>(dst) = *reinterpret_cast<T**>(src);
-            *reinterpret_cast<T**>(src) = nullptr;
+            *launder_cast<T**>(dst) = *s;
+            *s = nullptr;
         }
         else
         {
-            delete *reinterpret_cast<T**>(src);
+            delete *s;
         }
     }
 };
@@ -102,14 +109,15 @@ struct external_manager<with_allocator<T, Alloc>>
 {
     static void s_manage(storage_type* src, storage_type* dst) noexcept
     {
+        auto s = launder_cast<with_allocator<T, Alloc>**>(src);
         if(dst)
         {
-            *reinterpret_cast<T**>(dst) = *reinterpret_cast<T**>(src);
-            *reinterpret_cast<T**>(src) = nullptr;
+            *launder_cast<with_allocator<T, Alloc>**>(dst) = *s;
+            *s = nullptr;
         }
         else
         {
-            auto p = *reinterpret_cast<with_allocator<T, Alloc>**>(src);
+            auto p = *s;
             using A = typename std::allocator_traits<Alloc>
             ::template rebind_alloc<with_allocator<T, Alloc>>;
             A alloc(p->get_allocator());
@@ -124,14 +132,15 @@ struct internal_manager
 {
     static void s_manage(storage_type* src, storage_type* dst) noexcept
     {
+        auto s = launder_cast<T*>(src);
         if(dst)
         {
-            new(dst) T(std::move(*reinterpret_cast<T*>(src)));
-            reinterpret_cast<T*>(src)->~T();
+            new(dst) T(std::move(*s));
+            s->~T();
         }
         else
         {
-            reinterpret_cast<T*>(src)->~T();
+            s->~T();
         }
     }
 };
@@ -143,22 +152,22 @@ decltype(auto) storage_cast(const storage_type& obj)
     {
         if constexpr(Const)
         {
-            return **reinterpret_cast<const T* const *>(&obj);
+            return **launder_cast<const T* const *>(&obj);
         }
         else
         {
-            return *const_cast<T*>(*reinterpret_cast<const T* const *>(&obj));
+            return *const_cast<T*>(*launder_cast<const T* const *>(&obj));
         }
     }
     else
     {
         if constexpr(Const)
         {
-            return *reinterpret_cast<const T*>(&obj);
+            return *launder_cast<const T*>(&obj);
         }
         else
         {
-            return *const_cast<T*>(reinterpret_cast<const T*>(&obj));
+            return *const_cast<T*>(launder_cast<const T*>(&obj));
         }
     }
 }
