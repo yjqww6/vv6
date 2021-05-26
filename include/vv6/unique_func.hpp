@@ -306,10 +306,15 @@ public:
 
     unique_func_base& operator=(unique_func_base&& other) noexcept
     {
+        if(m_manager)
+        {
+            m_manager(&m_storage, nullptr);
+        }
         m_invoker = other.m_invoker;
         m_manager = other.m_manager;
         if(m_manager)
         {
+
             m_manager(&other.m_storage, &m_storage);
         }
         else

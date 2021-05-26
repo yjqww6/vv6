@@ -406,4 +406,49 @@ BOOST_AUTO_TEST_CASE(variance)
     static_assert (!std::is_constructible_v<vv6::unique_func<B(A)>, F1&>);
 }
 
+BOOST_AUTO_TEST_CASE(move_assign)
+{
+    int lived = 0;
+    struct A
+    {
+        int *m_a;
+        A(int *a = nullptr) : m_a(a)
+        {
+            ++(*m_a);
+        }
+
+        A(A&& other) noexcept : m_a(other.m_a)
+        {
+            other.m_a = nullptr;
+        }
+
+        A& operator=(A&& other) noexcept
+        {
+            A tmp(std::move(other));
+            std::swap(tmp.m_a, m_a);
+            return *this;
+        }
+
+        ~A()
+        {
+            if(m_a)
+            {
+                --(*m_a);
+            }
+        }
+
+        void operator()()
+        {
+
+        }
+    };
+
+    {
+        vv6::unique_func<void()> a;
+        vv6::unique_func<void()> func{A(&lived)};
+        func = std::move(a);
+    }
+    BOOST_CHECK(lived == 0);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
